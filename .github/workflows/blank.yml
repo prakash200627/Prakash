@@ -1,16 +1,15 @@
-# This is a basic workflow to help you get started with Actions
-
 name: prakash_ci_cd
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    - name: Clone PUBLIC repository
-      uses: GuillaumeFalourd/clone-github-repo-action@v2.3
-      with:
-      depth: 1
-      branch: 'main'
-      owner: 'whitedevil200627'
-      repository: 'Prakash'
-   
+    steps:
+      - name: Clone PUBLIC repository
+        uses: GuillaumeFalourd/clone-github-repo-action@v2.3
+        with:
+          depth: 1
+          branch: 'main'
+          owner: 'whitedevil200627'
+          repository: 'Prakash'
