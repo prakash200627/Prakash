@@ -1,4 +1,4 @@
-name: demo deploy pipeline
+name: Demo Deploy Pipeline
 
 on:
   workflow_dispatch:
@@ -11,21 +11,24 @@ jobs:
       EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
 
     steps:
-      - name: Checkout repo
+      # 1️⃣ Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
+      # 2️⃣ Setup SSH key from demo.pem secret
       - name: Setup SSH key
         run: |
           printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-      - name: Test SSH connection and create hello-world file
+      # 3️⃣ Test SSH connection and create hello-world file
+      - name: Test SSH connection
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
-            echo 'SSH Connected ✅' && echo 'hello-world' >> ~/new_file.txt
-          "
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} \
+          "echo 'SSH Connected ✅' && echo 'hello-world' >> ~/new_file.txt"
 
-      - name: Clone or pull repo on EC2
+      # 4️⃣ Clone or pull repository on EC2
+      - name: Clone project on EC2
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
             if [ ! -d ~/project ]; then
@@ -35,6 +38,7 @@ jobs:
             fi
           "
 
+      # 5️⃣ Upload a dummy .env file for demo purposes
       - name: Upload demo .env
         run: |
           echo "APP_ADMIN_USERNAME=demoadmin" > .env
@@ -43,6 +47,7 @@ jobs:
           echo "DB_PASSWORD=demopass" >> .env
           scp -o StrictHostKeyChecking=no -i private_key.pem .env ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }}:~/project/.env
 
+      # 6️⃣ Run a demo Docker container (hello-world)
       - name: Run demo Docker container
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
