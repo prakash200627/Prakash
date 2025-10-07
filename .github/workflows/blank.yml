@@ -7,28 +7,31 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
       EC2_URL: ${{ secrets.EC2_URL }}
       EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
       DB_USERNAME: ${{ secrets.DB_USERNAME }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       APP_ADMIN_USERNAME: ${{ secrets.APP_ADMIN_USERNAME }}
       APP_ADMIN_PASSWORD: ${{ secrets.APP_ADMIN_PASSWORD }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
     steps:
-      # 1️⃣ Checkout repo
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Setup SSH manually
-      - name: Setup SSH
+      # 2️⃣ Setup SSH key
+      - name: Setup SSH key
         run: |
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
+          printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-      # 3️⃣ Test SSH connection
+      # 3️⃣ Test SSH connection and create hello-world file
       - name: Test SSH connection
-        run: ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "echo 'SSH Connected ✅' && echo 'hello-world' >> ~/new_file.txt"
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} \
+          "echo 'SSH Connected ✅' && echo 'hello-world' >> ~/new_file.txt"
 
       # 4️⃣ Clone or pull project on EC2
       - name: Clone project on EC2
@@ -41,7 +44,7 @@ jobs:
             fi
           "
 
-      # 5️⃣ Install Docker Compose v2 on EC2 (if not installed)
+      # 5️⃣ Install Docker Compose v2 on EC2 (optional)
       - name: Install Docker Compose on EC2
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
@@ -52,7 +55,7 @@ jobs:
             docker compose version
           "
 
-      # 6️⃣ Upload secrets as .env file to EC2
+      # 6️⃣ Upload .env file with secrets to EC2
       - name: Upload .env file to EC2
         run: |
           echo "APP_ADMIN_USERNAME=${{ secrets.APP_ADMIN_USERNAME }}" > .env
@@ -61,7 +64,7 @@ jobs:
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
           scp -o StrictHostKeyChecking=no -i private_key.pem .env ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }}:~/project/.env
 
-      # 7️⃣ Set up Docker on GitHub runner (for building images)
+      # 7️⃣ Set up Docker Buildx on GitHub runner (needed for building images)
       - name: Set up Docker
         uses: docker/setup-buildx-action@v2
 
@@ -72,7 +75,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 9️⃣ Run Docker Compose on EC2 (commented initially for safe test)
+      # 9️⃣ Run Docker Compose on EC2 (optional: comment out for testing)
       - name: Run Docker Compose on EC2
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
