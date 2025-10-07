@@ -4,46 +4,68 @@ on:
   workflow_dispatch:
 
 jobs:
-  setup-ssh:
+  deploy:
     runs-on: ubuntu-latest
-    env:
-      EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-      EC2_URL: ${{ secrets.EC2_URL }}
-      EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
 
     steps:
-      - name: Setup SSH for EC2
-        uses: omarhosny206/setup-ssh-for-ec2@v1.0.0
-        with:
-          EC2_SSH_PRIVATE_KEY: $EC2_SSH_PRIVATE_KEY
-          EC2_URL: $EC2_URL
-
-      - name: Create a new file on the EC2 instance with "hello-world"
-        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "echo 'hello-world' >> new_file.txt"
-
+      # 1. Checkout repository
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 2. Setup SSH manually (more reliable than external action)
+      - name: Setup SSH
+        run: |
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      # 3. Test SSH connection
+      - name: Test SSH connection
+        run: ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "echo 'SSH Connected ✅'"
+
+      # 4. Set up Docker on GitHub runner (for buildx, not EC2)
       - name: Set up Docker
         uses: docker/setup-buildx-action@v2
 
+      # 5. Login to DockerHub
       - name: Login to DockerHub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # 6. Clone or pull project on EC2
       - name: Clone project on EC2
-        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "git clone https://github.com/srinivasarao3234/workflow-testing.git project || (cd project && git pull)"
+        run: ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
+          if [ ! -d project ]; then
+            git clone https://github.com/srinivasarao3234/workflow-testing.git project;
+          else
+            cd project && git pull;
+          fi
+        "
 
+      # 7. Install Docker Compose v2 on EC2 (if not installed)
       - name: Install Docker Compose v2 on EC2
-        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "
+        run: ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
           sudo mkdir -p /usr/local/lib/docker/cli-plugins &&
           curl -SL https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-x86_64 -o docker-compose &&
           sudo mv docker-compose /usr/local/lib/docker/cli-plugins/docker-compose &&
           sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose &&
           docker compose version
-          "
+        "
 
+      # 8. Upload secrets as .env file to EC2
+      - name: Upload env file to EC2
+        run: |
+          echo "APP_ADMIN_USERNAME=${{ secrets.APP_ADMIN_USERNAME }}" > .env
+          echo "APP_ADMIN_PASSWORD=${{ secrets.APP_ADMIN_PASSWORD }}" >> .env
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          scp -o StrictHostKeyChecking=no -i private_key.pem .env ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }}:~/project/.env
+
+      # 9. Run docker compose on EC2 with env file
       - name: Run docker compose on EC2
-        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "cd project && docker compose up --build -d && docker ps -a"
+        run: ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_URL }} "
+          cd project &&
+          docker compose --env-file .env up --build -d &&
+          docker ps -a
+        "
