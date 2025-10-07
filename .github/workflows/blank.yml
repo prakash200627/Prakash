@@ -1,24 +1,49 @@
-name: prakash_ci_cd
+name: pipeline to deploy website
+
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  setup-ssh:
     runs-on: ubuntu-latest
+    env:
+      EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+      EC2_URL: ${{ secrets.EC2_URL }}
+      EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+
     steps:
-      - name: Clone PUBLIC repository
-        uses: GuillaumeFalourd/clone-github-repo-action@v2.3
+      - name: Setup SSH for EC2
+        uses: omarhosny206/setup-ssh-for-ec2@v1.0.0
         with:
-          depth: 1
-          branch: 'main'
-          owner: 'whitedevil200627'
-          repository: 'Prakash'
-  login:
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Login to Docker Hub
-        uses: docker/login-action@v3
+          EC2_SSH_PRIVATE_KEY: $EC2_SSH_PRIVATE_KEY
+          EC2_URL: $EC2_URL
+
+      - name: Create a new file on the EC2 instance with "hello-world"
+        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "echo 'hello-world' >> new_file.txt"
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
         with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Clone project on EC2
+        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "git clone https://github.com/srinivasarao3234/workflow-testing.git project || (cd project && git pull)"
+
+      - name: Install Docker Compose v2 on EC2
+        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "
+          sudo mkdir -p /usr/local/lib/docker/cli-plugins &&
+          curl -SL https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-x86_64 -o docker-compose &&
+          sudo mv docker-compose /usr/local/lib/docker/cli-plugins/docker-compose &&
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose &&
+          docker compose version
+          "
+
+      - name: Run docker compose on EC2
+        run: ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_URL "cd project && docker compose up --build -d && docker ps -a"
